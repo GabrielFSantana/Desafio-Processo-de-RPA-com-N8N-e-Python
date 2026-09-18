@@ -65,7 +65,7 @@ workflow = {
             "name": "Webhook - Receber Metricas",
             "type": "n8n-nodes-base.webhook",
             "typeVersion": 2,
-            "position": [-160, 300],
+            "position": [-1248, -304],
             "webhookId": "b7f1c2d3-4e5a-4b6c-8d7e-9f0a1b2c3d4e",
         },
         # ------------------------------------------------------------------ 2
@@ -82,7 +82,7 @@ workflow = {
             "name": "Python - Analisar Servidor",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
-            "position": [100, 300],
+            "position": [-992, -304],
             "onError": "continueRegularOutput",
         },
         # ------------------------------------------------------------------ 3
@@ -101,7 +101,7 @@ workflow = {
             "name": "Switch - Classificar Status",
             "type": "n8n-nodes-base.switch",
             "typeVersion": 3.2,
-            "position": [360, 300],
+            "position": [-720, -304],
         },
         # ------------------------------------------------------------------ 4
         {
@@ -117,7 +117,7 @@ workflow = {
             "name": "Email - Alerta CRITICO",
             "type": "n8n-nodes-base.emailSend",
             "typeVersion": 2.1,
-            "position": [660, 100],
+            "position": [-432, -512],
         },
         # ------------------------------------------------------------------ 5
         {
@@ -133,7 +133,7 @@ workflow = {
             "name": "Email - Aviso ALERTA",
             "type": "n8n-nodes-base.emailSend",
             "typeVersion": 2.1,
-            "position": [660, 280],
+            "position": [-432, -320],
         },
         # ------------------------------------------------------------------ 6
         {
@@ -142,7 +142,7 @@ workflow = {
             "name": "Sem Acao - Servidor Normal",
             "type": "n8n-nodes-base.noOp",
             "typeVersion": 1,
-            "position": [660, 460],
+            "position": [-432, -144],
         },
         # ------------------------------------------------------------------ 7
         {
@@ -155,41 +155,41 @@ workflow = {
             "name": "Responder Webhook",
             "type": "n8n-nodes-base.respondToWebhook",
             "typeVersion": 1.1,
-            "position": [940, 300],
+            "position": [-144, -304],
         },
         # --------------------------------------------------------- anotacoes
         {
             "parameters": {
                 "content": "## 1. Entrada\nPOST com JSON:\n```\n{\n  \"servidor\": \"SRV-CFTV-02\",\n  \"cpu\": 72,\n  \"memoria\": 84,\n  \"disco\": 93,\n  \"servico\": \"online\"\n}\n```\nO payload chega em `$json.body`.",
-                "height": 300, "width": 300, "color": 4,
+                "height": 260, "width": 380, "color": 4,
             },
             "id": "a1000000-0000-4000-8000-000000000008",
             "name": "Nota - Entrada",
             "type": "n8n-nodes-base.stickyNote",
             "typeVersion": 1,
-            "position": [-260, -60],
+            "position": [-1300, -880],
         },
         {
             "parameters": {
                 "content": "## 2. Analise em Python\nChama o microsservico\n`python/api_analise.py`\n(POST /analisar).\n\nRegras: >=80% ALERTA, >=90% CRITICO,\nservico != online -> CRITICO.\nO pior nivel encontrado vence.\n\n**A API precisa estar rodando.**",
-                "height": 300, "width": 320, "color": 5,
+                "height": 260, "width": 360, "color": 5,
             },
             "id": "a1000000-0000-4000-8000-000000000009",
             "name": "Nota - Python",
             "type": "n8n-nodes-base.stickyNote",
             "typeVersion": 1,
-            "position": [80, -60],
+            "position": [-890, -880],
         },
         {
             "parameters": {
                 "content": "## 3. Roteamento e notificacao\nO Switch le `$json.status` e escolhe a saida.\nCRITICO e ALERTA disparam e-mail (SMTP).\nNORMAL segue direto para a resposta.\n\nConfigure a credencial SMTP nos dois\nnodes de e-mail antes de ativar.",
-                "height": 300, "width": 360, "color": 3,
+                "height": 260, "width": 400, "color": 3,
             },
             "id": "a1000000-0000-4000-8000-000000000010",
             "name": "Nota - Notificacao",
             "type": "n8n-nodes-base.stickyNote",
             "typeVersion": 1,
-            "position": [620, -60],
+            "position": [-500, -880],
         },
     ],
     "connections": {

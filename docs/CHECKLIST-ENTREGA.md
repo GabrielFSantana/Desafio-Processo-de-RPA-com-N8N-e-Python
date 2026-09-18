@@ -24,17 +24,19 @@ Marque tudo antes de enviar o link do repositório na plataforma da DIO.
 
 ## 3. Screenshots em `images/`
 
-- [ ] `workflow-n8n.png` — canvas completo
-- [ ] `node-webhook.png` — node Webhook configurado
-- [ ] `node-http-request.png` — node HTTP Request chamando a API Python
-- [ ] `node-switch.png` — Switch com as 4 saídas nomeadas
-- [ ] `email-alerta.png` — e-mail recebido
-- [ ] `execucoes.png` — aba Executions com os cenários
-- [ ] Nenhum dado sensível visível nos prints (e-mails reais, hostnames internos, tokens)
+- [x] `workflow-n8n.png` — canvas completo
+- [x] `node-webhook.png` — node Webhook configurado
+- [x] `node-http-request.png` — node HTTP Request chamando a API Python
+- [x] `node-switch.png` — Switch com a regra e o fallback ERRO
+- [x] `execucao-normal.png` — execução real do cenário NORMAL
+- [x] `execucoes.png` — execução real do cenário ERRO
+- [ ] `email-alerta.png` — e-mail recebido **(falta: depende do SMTP)**
+- [x] Nenhum dado sensível visível nos prints
 
 ## 4. README
 
-- [ ] Todos os 6 marcadores `📸 Screenshot` substituídos pelas imagens reais
+- [x] Imagens embutidas no lugar dos marcadores
+- [ ] Descomentar a linha de `email-alerta.png` na seção 8 depois de gerar o print
 - [ ] Links internos funcionando (clique em todos no GitHub)
 - [ ] Badges renderizando
 - [ ] Seu nome e link do GitHub corretos no rodapé

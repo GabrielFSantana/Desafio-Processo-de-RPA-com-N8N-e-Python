@@ -69,9 +69,9 @@ O agente que coleta as métricas pode ser qualquer coisa: um script de crontab,
 um `curl` no fim de um job, Zabbix, Prometheus Alertmanager ou até outro
 workflow do N8N. O contrato é apenas o JSON do webhook.
 
-> 📸 **Screenshot 1 — visão geral do workflow**
-> Insira aqui o print do canvas completo do N8N (todos os nodes conectados).
-> `![Workflow completo no N8N](images/workflow-n8n.png)`
+![Workflow completo no N8N](images/workflow-n8n.png)
+
+<p align="center"><sub>O workflow completo no editor do N8N.</sub></p>
 
 ---
 
@@ -202,17 +202,23 @@ Resumo:
 | ⑥ | `Sem Acao - Servidor Normal` | `No Operation` | Caminho “tudo certo” — não notifica, só segue para a resposta |
 | ⑦ | `Responder Webhook` | `Respond to Webhook` | Devolve o diagnóstico completo em JSON para quem chamou |
 
-> 📸 **Screenshot 2 — node Webhook configurado**
-> Print mostrando método `POST`, path `monitoramento-servidor`, `Respond: Using 'Respond to Webhook' Node` e as URLs de Test/Production.
-> `![Node Webhook](images/node-webhook.png)`
+### ① Webhook — o contrato de entrada
 
-> 📸 **Screenshot 3 — node HTTP Request chamando o Python**
-> Print mostrando `POST http://127.0.0.1:8000/analisar` e o body com a expression.
-> `![Node HTTP Request](images/node-http-request.png)`
+![Node Webhook](images/node-webhook.png)
 
-> 📸 **Screenshot 4 — Switch com as saídas renomeadas**
-> Print mostrando as quatro saídas: CRITICO, ALERTA, NORMAL e ERRO.
-> `![Node Switch](images/node-switch.png)`
+<p align="center"><sub>Método <code>POST</code>, path <code>monitoramento-servidor</code> e <code>Respond: Using 'Respond to Webhook' Node</code>.</sub></p>
+
+### ② HTTP Request — a ponte para o Python
+
+![Node HTTP Request](images/node-http-request.png)
+
+<p align="center"><sub><code>POST http://127.0.0.1:8000/analisar</code> com o corpo montado pela expression <code>{{ JSON.stringify($json.body) }}</code>.</sub></p>
+
+### ③ Switch — o roteamento por severidade
+
+![Node Switch](images/node-switch.png)
+
+<p align="center"><sub>Três regras sobre <code>{{ $json.status }}</code> mais a saída de fallback <code>ERRO</code>.</sub></p>
 
 ---
 
@@ -336,9 +342,9 @@ dumps, imagens temporarias). Avaliar expansao do volume.
 Prioridade: P1 | Analisado em (UTC): 2026-09-18T01:03:38+00:00
 ```
 
-> 📸 **Screenshot 5 — e-mail recebido**
-> Print do e-mail de alerta crítico na caixa de entrada.
-> `![E-mail de alerta](images/email-alerta.png)`
+<!-- Screenshot do e-mail recebido: adicione images/email-alerta.png e descomente a linha abaixo
+![E-mail de alerta](images/email-alerta.png)
+-->
 
 ---
 
@@ -408,9 +414,15 @@ Ran 14 tests in 0.001s
 OK
 ```
 
-> 📸 **Screenshot 6 — execução do workflow no N8N**
-> Print da aba *Executions* mostrando os três cenários com os caminhos verdes diferentes.
-> `![Execuções](images/execucoes.png)`
+### Execuções reais no N8N
+
+**Cenário NORMAL** — o item percorre `Switch → NORMAL → Sem Acao` e vai direto para a resposta, sem tocar nos nodes de e-mail:
+
+![Execução do cenário NORMAL](images/execucao-normal.png)
+
+**Cenário de payload inválido** — a API devolve `status: ERRO`, e o Switch manda o item pela saída de fallback, também sem gerar e-mail:
+
+![Execução do cenário ERRO](images/execucoes.png)
 
 ---
 
@@ -582,12 +594,12 @@ rpa-monitoramento-n8n-python/
 │   └── gerar_workflow.py              # Gera o JSON do workflow
 │
 └── images/
-    ├── workflow-n8n.png               # Screenshot 1 — canvas completo
-    ├── node-webhook.png               # Screenshot 2
-    ├── node-http-request.png          # Screenshot 3
-    ├── node-switch.png                # Screenshot 4
-    ├── email-alerta.png               # Screenshot 5
-    └── execucoes.png                  # Screenshot 6
+    ├── workflow-n8n.png               # Canvas completo
+    ├── node-webhook.png               # Node Webhook configurado
+    ├── node-http-request.png          # Node HTTP Request chamando o Python
+    ├── node-switch.png                # Switch com as 4 saídas
+    ├── execucao-normal.png            # Execução do cenário NORMAL
+    └── execucoes.png                  # Execução do cenário ERRO
 ```
 
 ---

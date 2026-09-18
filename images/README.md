@@ -1,15 +1,21 @@
 # Screenshots
 
-Coloque aqui os prints referenciados no README principal:
+Imagens usadas no README principal.
 
-| Arquivo | O que deve mostrar |
+| Arquivo | O que mostra |
 |---|---|
-| `workflow-n8n.png` | Canvas completo do N8N, com todos os nodes conectados |
-| `node-webhook.png` | Node Webhook aberto: método POST, path, Respond e as URLs |
-| `node-python.png`  | Code node com `Language: Python (Beta)` e o código visível |
-| `node-switch.png`  | Switch com as 4 saídas renomeadas (CRITICO/ALERTA/NORMAL/ERRO) |
-| `email-alerta.png` | E-mail de alerta crítico recebido na caixa de entrada |
-| `execucoes.png`    | Aba Executions com os três cenários executados |
+| `workflow-n8n.png` | Canvas completo do N8N, com os 7 nodes e as 3 sticky notes |
+| `node-webhook.png` | Node Webhook: método POST, path, Respond e as URLs de Test/Production |
+| `node-http-request.png` | Node HTTP Request chamando `http://127.0.0.1:8000/analisar` |
+| `node-switch.png` | Switch com a regra sobre `$json.status` e o fallback `ERRO` |
+| `execucao-normal.png` | Execução real do cenário NORMAL (caminho verde até o NoOp) |
+| `execucoes.png` | Execução real do cenário de payload inválido (caminho ERRO) |
+| `email-alerta.png` | **Pendente** — print do e-mail de alerta crítico recebido |
 
-Dica: use PNG, largura entre 1200 e 1600 px, e esconda dados sensíveis
-(e-mails reais, hostnames internos, URLs de webhook de produção) antes de commitar.
+Para gerar `email-alerta.png`: configure a credencial SMTP nos dois nodes de
+e-mail, dispare o cenário crítico (`examples/servidor_critico.json`) e tire o
+print do e-mail na caixa de entrada. Depois descomente a linha da imagem na
+seção 8 do README.
+
+Antes de commitar qualquer print novo, confira que não há dados sensíveis
+visíveis (e-mails reais, hostnames internos, tokens).
