@@ -1,0 +1,7 @@
+{
+  "servidor": "SRV-INT-05",
+  "cpu": 12,
+  "memoria": 22,
+  "disco": 40,
+  "servico": "offline"
+}
