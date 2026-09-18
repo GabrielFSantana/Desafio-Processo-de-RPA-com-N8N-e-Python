@@ -4,19 +4,21 @@ Marque tudo antes de enviar o link do repositório na plataforma da DIO.
 
 ## 1. Ambiente e execução
 
+- [ ] Microsserviço Python rodando (`iniciar-api.bat` / `./iniciar-api.sh`)
+- [ ] `curl http://127.0.0.1:8000/saude` responde `{"status": "ok", ...}`
 - [ ] N8N rodando (`http://localhost:5678`)
 - [ ] Workflow `workflow/monitoramento-servidor.json` importado sem erro
-- [ ] Code node aberto e confirmado com **Language: Python (Beta)**
+- [ ] Node HTTP Request apontando para a URL correta da API
 - [ ] Credencial **SMTP** criada e testada
 - [ ] `From Email` e `To Email` ajustados nos dois nodes de e-mail
 - [ ] Workflow **salvo** e com toggle **Active** ligado
 
 ## 2. Testes executados
 
-- [ ] Cenário 1 — **NORMAL** → retorna `status: NORMAL`, **nenhum e-mail**
-- [ ] Cenário 2 — **ALERTA** → e-mail `[P2 - ALERTA]` recebido
-- [ ] Cenário 3 — **CRÍTICO** → e-mail `[P1 - CRITICO]` recebido
-- [ ] Cenário 4 — **serviço offline** → classificado como CRÍTICO
+- [ ] Cenário 1 — **NORMAL** (`SRV-APP-03`) → `status: NORMAL`, **nenhum e-mail**
+- [ ] Cenário 2 — **ALERTA** (`SRV-BD-04`) → e-mail `[P2 - ALERTA]` recebido
+- [ ] Cenário 3 — **CRÍTICO** (`SRV-CFTV-02`) → e-mail `[P1 - CRITICO]` recebido
+- [ ] Cenário 4 — **serviço offline** (`SRV-PORTARIA-01`) → classificado como CRÍTICO
 - [ ] Cenário 5 — **payload inválido** → `status: ERRO`, sem e-mail
 - [ ] `python3 -m unittest discover -s python -v` → **14 testes OK**
 
@@ -24,7 +26,7 @@ Marque tudo antes de enviar o link do repositório na plataforma da DIO.
 
 - [ ] `workflow-n8n.png` — canvas completo
 - [ ] `node-webhook.png` — node Webhook configurado
-- [ ] `node-python.png` — Code node com o Python
+- [ ] `node-http-request.png` — node HTTP Request chamando a API Python
 - [ ] `node-switch.png` — Switch com as 4 saídas nomeadas
 - [ ] `email-alerta.png` — e-mail recebido
 - [ ] `execucoes.png` — aba Executions com os cenários
@@ -42,7 +44,6 @@ Marque tudo antes de enviar o link do repositório na plataforma da DIO.
 - [ ] `workflow/monitoramento-servidor.json` **sem** senha/host de SMTP real
 - [ ] Nenhum `.env` ou arquivo de credencial commitado (`git status` limpo)
 - [ ] `git log -p | grep -i -E "senha|password|smtp|token"` não retorna nada sensível
-- [ ] Endereços de e-mail no JSON são genéricos (`@suaempresa.com.br`)
 
 ## 6. Repositório no GitHub
 
@@ -64,16 +65,12 @@ Marque tudo antes de enviar o link do repositório na plataforma da DIO.
 
 ```bash
 cd rpa-monitoramento-n8n-python
-
-git init
 git add .
 git commit -m "feat: RPA de monitoramento de servidores com N8N e Python"
-git branch -M main
-git remote add origin https://github.com/GabrielFSantana/Desafio-Processo-de-RPA-com-N8N-e-Python.git
 git push -u origin main
 ```
 
-Se o repositório já tiver um commit inicial (README criado pelo GitHub):
+Se o repositório remoto já tiver um commit inicial (README criado pelo GitHub):
 
 ```bash
 git pull origin main --allow-unrelated-histories

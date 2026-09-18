@@ -13,24 +13,35 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -80,
+        -160,
         300
       ],
       "webhookId": "b7f1c2d3-4e5a-4b6c-8d7e-9f0a1b2c3d4e"
     },
     {
       "parameters": {
-        "language": "python",
-        "pythonCode": "# =============================================================================\n# CODE NODE DO N8N  ->  \"Python - Analisar Servidor\"\n# -----------------------------------------------------------------------------\n# Onde colar:  node Code  >  Language: Python (Beta)  >  Mode: Run Once for All Items\n# Este arquivo e uma versao AUTOCONTIDA de python/analisar_servidor.py.\n# Nao ha import de arquivo local porque o Code node roda em sandbox (Pyodide).\n#\n# ENTRADA esperada (vinda do node Webhook):  $json.body  ->  { servidor, cpu, memoria, disco, servico }\n# SAIDA: 1 item com o diagnostico completo, incluindo o campo \"mensagem\" ja formatado.\n# =============================================================================\n\nfrom datetime import datetime, timezone\n\nLIMIARES = {\n    \"cpu\": {\"alerta\": 80, \"critico\": 90},\n    \"memoria\": {\"alerta\": 80, \"critico\": 90},\n    \"disco\": {\"alerta\": 80, \"critico\": 90},\n}\n\nESTADO_SERVICO = {\n    \"online\": \"NORMAL\", \"running\": \"NORMAL\", \"ativo\": \"NORMAL\",\n    \"degradado\": \"ALERTA\", \"degraded\": \"ALERTA\", \"lento\": \"ALERTA\",\n    \"offline\": \"CRITICO\", \"parado\": \"CRITICO\", \"stopped\": \"CRITICO\",\n    \"error\": \"CRITICO\", \"falha\": \"CRITICO\",\n}\n\nPESO_STATUS = {\"NORMAL\": 0, \"ALERTA\": 1, \"CRITICO\": 2}\nROTULO = {\"cpu\": \"CPU\", \"memoria\": \"memoria RAM\", \"disco\": \"disco\"}\n\nACOES = {\n    \"disco\": {\n        \"CRITICO\": \"Verificar espaco disponivel e realizar limpeza do servidor (logs antigos, dumps, imagens temporarias). Avaliar expansao do volume.\",\n        \"ALERTA\": \"Monitorar o crescimento do disco e agendar limpeza preventiva de logs e arquivos temporarios.\",\n    },\n    \"memoria\": {\n        \"CRITICO\": \"Identificar os processos com maior consumo de RAM, avaliar restart do servico e revisar limites de memoria do container.\",\n        \"ALERTA\": \"Acompanhar o consumo de memoria e revisar cache/pool de conexoes da aplicacao.\",\n    },\n    \"cpu\": {\n        \"CRITICO\": \"Analisar processos em loop ou consultas pesadas, avaliar escalonamento horizontal e revisar jobs agendados no horario.\",\n        \"ALERTA\": \"Acompanhar a carga de CPU e verificar se ha rotina/relatorio pesado em execucao no momento.\",\n    },\n    \"servico\": {\n        \"CRITICO\": \"Servico indisponivel: reiniciar o servico, checar logs da aplicacao e abrir chamado de incidente imediatamente.\",\n        \"ALERTA\": \"Servico degradado: verificar tempo de resposta, fila de requisicoes e dependencias externas.\",\n    },\n}\n\nCAMPOS = (\"servidor\", \"cpu\", \"memoria\", \"disco\", \"servico\")\n\n\ndef para_numero(valor, campo):\n    if isinstance(valor, bool):\n        raise ValueError(\"Campo '\" + campo + \"' nao pode ser booleano.\")\n    if isinstance(valor, (int, float)):\n        numero = float(valor)\n    else:\n        limpo = str(valor).strip().replace(\"%\", \"\").replace(\",\", \".\")\n        try:\n            numero = float(limpo)\n        except ValueError:\n            raise ValueError(\"Campo '\" + campo + \"' nao e numerico: \" + str(valor))\n    if numero < 0 or numero > 100:\n        raise ValueError(\"Campo '\" + campo + \"' deve estar entre 0 e 100.\")\n    return numero\n\n\ndef analisar(dados):\n    faltando = [c for c in CAMPOS if c not in dados or dados[c] in (None, \"\")]\n    if faltando:\n        raise ValueError(\"Campos obrigatorios ausentes: \" + \", \".join(faltando))\n\n    metricas = {\n        \"servidor\": str(dados[\"servidor\"]).strip(),\n        \"cpu\": para_numero(dados[\"cpu\"], \"cpu\"),\n        \"memoria\": para_numero(dados[\"memoria\"], \"memoria\"),\n        \"disco\": para_numero(dados[\"disco\"], \"disco\"),\n        \"servico\": str(dados[\"servico\"]).strip().lower(),\n    }\n\n    ocorrencias = []\n    for recurso in (\"disco\", \"memoria\", \"cpu\"):\n        valor = metricas[recurso]\n        lim = LIMIARES[recurso]\n        if valor >= lim[\"critico\"]:\n            nivel, limite = \"CRITICO\", lim[\"critico\"]\n        elif valor >= lim[\"alerta\"]:\n            nivel, limite = \"ALERTA\", lim[\"alerta\"]\n        else:\n            continue\n        ocorrencias.append((nivel, recurso, \"Utilizacao de \" + ROTULO[recurso] +\n                            \" em \" + str(int(valor)) + \"% (limite \" + nivel.lower() +\n                            \": \" + str(limite) + \"%)\"))\n\n    nivel_servico = ESTADO_SERVICO.get(metricas[\"servico\"], \"CRITICO\")\n    if nivel_servico != \"NORMAL\":\n        ocorrencias.append((nivel_servico, \"servico\",\n                            \"Servico reportado como '\" + metricas[\"servico\"] + \"'\"))\n\n    if not ocorrencias:\n        status = \"NORMAL\"\n        motivo = \"Todos os recursos monitorados estao dentro dos limites aceitaveis.\"\n        acao = \"Nenhuma acao necessaria. Manter o monitoramento de rotina.\"\n        afetados = []\n    else:\n        status = max([o[0] for o in ocorrencias], key=lambda s: PESO_STATUS[s])\n        piores = [o for o in ocorrencias if o[0] == status]\n        motivo = \"; \".join([o[2] for o in piores]) + \".\"\n        acao = \" \".join([ACOES[o[1]][status] for o in piores])\n        afetados = [o[1] for o in piores]\n\n    r = {\n        \"servidor\": metricas[\"servidor\"],\n        \"status\": status,\n        \"motivo\": motivo,\n        \"acao_recomendada\": acao,\n        \"recursos_afetados\": afetados,\n        \"prioridade\": {\"NORMAL\": \"P4\", \"ALERTA\": \"P2\", \"CRITICO\": \"P1\"}[status],\n        \"notificar\": status != \"NORMAL\",\n        \"metricas\": metricas,\n        \"analisado_em\": datetime.now(timezone.utc).isoformat(timespec=\"seconds\"),\n        \"versao_regras\": \"1.0.0\",\n    }\n\n    titulo = \"ALERTA DE MONITORAMENTO\" if status != \"NORMAL\" else \"RELATORIO DE MONITORAMENTO\"\n    r[\"mensagem\"] = (\n        titulo + \"\\n\"\n        \"Servidor: \" + r[\"servidor\"] + \"\\n\"\n        \"Status: \" + r[\"status\"] + \"\\n\"\n        \"CPU: \" + str(int(metricas[\"cpu\"])) + \"%\\n\"\n        \"Memoria: \" + str(int(metricas[\"memoria\"])) + \"%\\n\"\n        \"Disco: \" + str(int(metricas[\"disco\"])) + \"%\\n\"\n        \"Servico: \" + metricas[\"servico\"] + \"\\n\\n\"\n        \"Problema identificado:\\n\" + r[\"motivo\"] + \"\\n\\n\"\n        \"Acao recomendada:\\n\" + r[\"acao_recomendada\"] + \"\\n\\n\"\n        \"Prioridade: \" + r[\"prioridade\"] + \" | Analisado em (UTC): \" + r[\"analisado_em\"]\n    )\n    return r\n\n\n# ---------------------------------------------------------------------------\n# Ponte com o N8N\n# ---------------------------------------------------------------------------\nsaida = []\n\nfor item in _input.all():\n    dados = item.json.to_py()          # JsProxy -> dict Python\n    corpo = dados.get(\"body\", dados)   # o Webhook entrega o payload dentro de \"body\"\n    try:\n        saida.append({\"json\": analisar(corpo)})\n    except Exception as erro:\n        saida.append({\"json\": {\n            \"status\": \"ERRO\",\n            \"servidor\": corpo.get(\"servidor\", \"desconhecido\"),\n            \"motivo\": str(erro),\n            \"acao_recomendada\": \"Corrigir o payload enviado ao webhook e reenviar.\",\n            \"notificar\": False,\n        }})\n\nreturn saida\n"
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/analisar",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "a1000000-0000-4000-8000-000000000002",
       "name": "Python - Analisar Servidor",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
-        160,
+        100,
         300
-      ]
+      ],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -123,14 +134,14 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
       "position": [
-        400,
+        360,
         300
       ]
     },
     {
       "parameters": {
-        "fromEmail": "monitoramento@suaempresa.com.br",
-        "toEmail": "infraestrutura@suaempresa.com.br",
+        "fromEmail": "gabrielsantfelipe@gmail.com",
+        "toEmail": "gabrielsantfelipe@gmail.com",
         "subject": "=[P1 - CRITICO] {{ $json.servidor }} - acao imediata necessaria",
         "emailFormat": "text",
         "text": "={{ $json.mensagem }}",
@@ -143,14 +154,14 @@
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
-        700,
+        660,
         100
       ]
     },
     {
       "parameters": {
-        "fromEmail": "monitoramento@suaempresa.com.br",
-        "toEmail": "infraestrutura@suaempresa.com.br",
+        "fromEmail": "gabrielsantfelipe@gmail.com",
+        "toEmail": "gabrielsantfelipe@gmail.com",
         "subject": "=[P2 - ALERTA] {{ $json.servidor }} - recurso proximo do limite",
         "emailFormat": "text",
         "text": "={{ $json.mensagem }}",
@@ -163,7 +174,7 @@
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
-        700,
+        660,
         280
       ]
     },
@@ -174,14 +185,14 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        700,
+        660,
         460
       ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify($json) }}",
+        "responseBody": "={{ JSON.stringify($('Python - Analisar Servidor').item.json) }}",
         "options": {}
       },
       "id": "a1000000-0000-4000-8000-000000000007",
@@ -189,13 +200,13 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        980,
+        940,
         300
       ]
     },
     {
       "parameters": {
-        "content": "## 1. Entrada\nPOST com JSON:\n```\n{\n  \"servidor\": \"SRV-PACS-01\",\n  \"cpu\": 72,\n  \"memoria\": 84,\n  \"disco\": 93,\n  \"servico\": \"online\"\n}\n```\nO payload chega em `$json.body`.",
+        "content": "## 1. Entrada\nPOST com JSON:\n```\n{\n  \"servidor\": \"SRV-CFTV-02\",\n  \"cpu\": 72,\n  \"memoria\": 84,\n  \"disco\": 93,\n  \"servico\": \"online\"\n}\n```\nO payload chega em `$json.body`.",
         "height": 300,
         "width": 300,
         "color": 4
@@ -205,15 +216,15 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -180,
+        -260,
         -60
       ]
     },
     {
       "parameters": {
-        "content": "## 2. Analise em Python\nCode node (Python Beta).\nRegras: >=80% ALERTA, >=90% CRITICO,\nservico != online -> CRITICO.\nO pior nivel encontrado vence.\n\nSaida inclui `status`, `motivo`,\n`acao_recomendada` e `mensagem`.",
+        "content": "## 2. Analise em Python\nChama o microsservico\n`python/api_analise.py`\n(POST /analisar).\n\nRegras: >=80% ALERTA, >=90% CRITICO,\nservico != online -> CRITICO.\nO pior nivel encontrado vence.\n\n**A API precisa estar rodando.**",
         "height": 300,
-        "width": 300,
+        "width": 320,
         "color": 5
       },
       "id": "a1000000-0000-4000-8000-000000000009",
@@ -221,7 +232,7 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        160,
+        80,
         -60
       ]
     },
@@ -237,7 +248,7 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        660,
+        620,
         -60
       ]
     }

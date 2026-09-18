@@ -5,8 +5,9 @@
 > Projeto desenvolvido como entrega do desafio **“Criando um Processo de RPA com N8N e Python”** — Bootcamp **Santander – Automação com N8N** (DIO).
 
 <p align="left">
-  <img alt="N8N" src="https://img.shields.io/badge/n8n-1.x-EA4B71?style=flat-square&logo=n8n&logoColor=white">
+  <img alt="N8N" src="https://img.shields.io/badge/n8n-2.x-EA4B71?style=flat-square&logo=n8n&logoColor=white">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white">
+  <img alt="Dependências" src="https://img.shields.io/badge/depend%C3%AAncias-zero-success?style=flat-square">
   <img alt="Licença" src="https://img.shields.io/badge/licen%C3%A7a-MIT-blue?style=flat-square">
   <img alt="Testes" src="https://img.shields.io/badge/testes-14%20passando-brightgreen?style=flat-square">
 </p>
@@ -37,16 +38,36 @@ Este projeto implementa um **RPA (Robotic Process Automation)** que automatiza u
 das tarefas mais repetitivas — e mais críticas — de uma equipe de infraestrutura:
 **olhar métricas de servidor, decidir se aquilo é problema e avisar alguém.**
 
+### Cenário fictício
+
+A **CondoTech Sistemas** é uma empresa (fictícia) que fornece e mantém a
+infraestrutura tecnológica de condomínios residenciais: portaria eletrônica,
+CFTV, aplicativo do morador e o banco de dados que sustenta tudo isso.
+
+Cada condomínio atendido tem quatro servidores:
+
+| Servidor | Função |
+|---|---|
+| `SRV-PORTARIA-01` | Controle de acesso e interfone da portaria |
+| `SRV-CFTV-02` | Gravação e retenção das imagens das câmeras |
+| `SRV-APP-03` | API do aplicativo do morador (reservas, avisos, boletos) |
+| `SRV-BD-04` | Banco de dados central |
+
+Com dezenas de condomínios atendidos, a equipe não consegue olhar todos os
+painéis todos os dias. É essa vigilância que o RPA assume.
+
+### Como funciona
+
 O N8N expõe um **Webhook HTTP** que recebe as métricas coletadas de um servidor
-(CPU, memória, disco e status do serviço). Um **Code node executando Python**
+(CPU, memória, disco e status do serviço). Um **microsserviço em Python**
 aplica as regras de capacity planning, classifica o servidor em
 `NORMAL`, `ALERTA` ou `CRITICO`, monta o motivo e a ação recomendada, e devolve
 um JSON estruturado. Um **Switch** roteia o resultado e dispara a notificação por
 **e-mail (SMTP)** apenas quando existe um problema real.
 
 O agente que coleta as métricas pode ser qualquer coisa: um script de crontab,
-um `curl` no fim de um job, Zabbix, Prometheus Alertmanager, um health check de
-aplicação ou até outro workflow do N8N. O contrato é apenas o JSON do webhook.
+um `curl` no fim de um job, Zabbix, Prometheus Alertmanager ou até outro
+workflow do N8N. O contrato é apenas o JSON do webhook.
 
 > 📸 **Screenshot 1 — visão geral do workflow**
 > Insira aqui o print do canvas completo do N8N (todos os nodes conectados).
@@ -67,15 +88,15 @@ aplicação ou até outro workflow do N8N. O contrato é apenas o JSON do webhoo
 
 ## 3. Problema que a automação resolve
 
-Em ambientes de produção — especialmente em plataformas que armazenam grande
-volume de arquivos, como sistemas de imagem médica (PACS/RIS/LIS) — o disco
-enche silenciosamente. Quando o alerta chega, normalmente já chegou tarde.
+O servidor de CFTV é o exemplo perfeito: câmeras gravando 24 horas por dia
+enchem o disco de forma silenciosa e previsível. Quando alguém percebe,
+a gravação já parou — e justamente no dia em que o condomínio precisa da imagem.
 
 O cenário manual típico:
 
 | Dor | Consequência |
 |---|---|
-| Métricas espalhadas em dashboards diferentes | Ninguém olha todos os dias |
+| Métricas espalhadas em painéis diferentes | Ninguém olha todos os dias |
 | Triagem manual (“isso é grave?”) | Depende da experiência de quem está de plantão |
 | Critério informal de severidade | Duas pessoas classificam o mesmo evento de formas diferentes |
 | Aviso por WhatsApp/verbal | Sem rastro, sem histórico, sem SLA |
@@ -95,13 +116,13 @@ O que esta automação entrega:
 
 | Tecnologia | Papel no projeto |
 |---|---|
-| **N8N 1.x** | Orquestração do RPA: webhook, roteamento, notificação e resposta HTTP |
+| **N8N 2.x** | Orquestração do RPA: webhook, roteamento, notificação e resposta HTTP |
 | **Python 3.10+** | Motor de análise e classificação (regras de negócio) |
-| **Code node (Python / Pyodide)** | Executa o Python **dentro** do N8N, sem dependência externa |
+| **`http.server` (stdlib)** | Microsserviço HTTP que expõe o motor — **zero dependências** |
+| **Node HTTP Request** | Ponte entre o N8N e o serviço Python |
 | **Node Send Email (SMTP)** | Canal de notificação da equipe de infraestrutura |
-| **Webhook / HTTP POST** | Contrato de entrada — desacopla o coletor de métricas do analisador |
+| **Webhook / HTTP POST** | Contrato de entrada — desacopla o coletor do analisador |
 | **unittest** | 14 testes automatizados cobrindo as regras e as bordas |
-| **Docker (opcional)** | Forma recomendada de subir o N8N localmente |
 
 ---
 
@@ -117,35 +138,49 @@ O que esta automação entrega:
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                                 N8N                                     │
 │                                                                         │
-│  ① Webhook ──▶ ② Code node (PYTHON) ──▶ ③ Switch ──┬──▶ ④ E-mail P1     │
-│   recebe        analisa e classifica     roteia    ├──▶ ⑤ E-mail P2     │
-│                                                    ├──▶ ⑥ NoOp (normal) │
-│                                                    └──▶ (fallback ERRO) │
-│                                                          │              │
-│                                    ⑦ Respond to Webhook ◀┘              │
-└─────────────────────────────────────────────────────────────────────────┘
-           │  HTTP 200  { servidor, status, motivo, acao_recomendada, ... }
-           ▼
-   Resposta ao coletor (log / auditoria)          ✉  Caixa da equipe de infra
+│  ① Webhook ──▶ ② HTTP Request ──▶ ③ Switch ──┬──▶ ④ E-mail P1 (CRÍTICO) │
+│   recebe            │                        ├──▶ ⑤ E-mail P2 (ALERTA)  │
+│                     │                        ├──▶ ⑥ NoOp (normal)       │
+│                     │                        └──▶ (fallback ERRO)       │
+│                     │                                   │               │
+│                     │              ⑦ Respond to Webhook ◀┘              │
+└─────────────────────┼───────────────────────────────────────────────────┘
+                      │  POST /analisar
+                      ▼
+      ┌───────────────────────────────────┐
+      │   MICROSSERVIÇO PYTHON            │
+      │   python/api_analise.py  :8000    │
+      │   ───────────────────────────     │
+      │   analisar_servidor.py            │
+      │   • valida e normaliza            │
+      │   • aplica os limiares            │
+      │   • classifica e prioriza         │
+      │   • monta motivo + ação + msg     │
+      └───────────────────────────────────┘
 ```
 
 **Fluxo em uma linha:**
 `Webhook → N8N → Python → Análise → Classificação → N8N → Notificação/Relatório`
 
-**Decisão de arquitetura — por que o Code node e não o Execute Command?**
+### Por que microsserviço e não o Code node em Python?
 
-| Critério | Code node (Python/Pyodide) ✅ | Execute Command (`python3 script.py`) |
+Esta foi uma decisão de projeto tomada **depois de testar as três alternativas**
+numa instalação real do N8N 2.31 (npm, Windows):
+
+| Abordagem | Resultado no teste | Observação |
 |---|---|---|
-| Funciona no N8N Cloud | Sim | Não |
-| Funciona na imagem Docker oficial | Sim | Não (a imagem não traz Python) |
-| Precisa montar volume / instalar pacote | Não | Sim |
-| Código versionado junto do workflow | Sim (vai no JSON exportado) | Não (fica fora) |
-| Bibliotecas externas (psutil, pandas) | Limitado ao Pyodide | Livre |
+| **Code node — Python** | ❌ `Python runner unavailable: Virtual environment is missing` | A partir do N8N 2.x o Python do Code node depende do pacote `@n8n/task-runner-python` e de um virtualenv gerenciado, que não vem pronto em instalação npm |
+| **Execute Command** | ❌ `Unrecognized node type` | O node foi retirado do conjunto padrão no N8N 2.0 por segurança; volta só via `N8N_NODES_INCLUDE` |
+| **Microsserviço + HTTP Request** | ✅ Funciona | Usa o node mais universal do N8N; independe de versão, de flag e de sistema operacional |
 
-Para este desafio, o **Code node vence em simplicidade e reprodutibilidade** —
-qualquer pessoa importa o JSON e roda. A alternativa com `Execute Command` está
-documentada em [`docs/PASSO-A-PASSO.md`](docs/PASSO-A-PASSO.md) para quem usa
-N8N self-hosted e quer rodar o script como arquivo.
+Além de simplesmente funcionar, a abordagem escolhida tem vantagens reais:
+
+- **Independência de versão.** O `HTTP Request` existe em todas as versões do N8N.
+- **Python de verdade.** É o interpretador do sistema, com acesso a qualquer
+  biblioteca (`psutil`, `pandas`, `requests`) — não a um sandbox limitado.
+- **Testável isoladamente.** Dá para rodar `curl` contra a API sem abrir o N8N.
+- **Escalável.** O mesmo serviço pode atender outros workflows, outros sistemas
+  ou virar um container próprio, sem tocar no N8N.
 
 ---
 
@@ -159,8 +194,8 @@ Resumo:
 
 | # | Node | Tipo | Para que serve |
 |---|---|---|---|
-| ① | `Webhook - Receber Metricas` | `Webhook` | Expõe a URL `POST /webhook/monitoramento-servidor` e entrega o payload em `$json.body` |
-| ② | `Python - Analisar Servidor` | `Code` (Python) | Valida, classifica e monta motivo, ação recomendada e mensagem |
+| ① | `Webhook - Receber Metricas` | `Webhook` | Expõe `POST /webhook/monitoramento-servidor` e entrega o payload em `$json.body` |
+| ② | `Python - Analisar Servidor` | `HTTP Request` | Envia as métricas para o microsserviço Python e recebe o diagnóstico |
 | ③ | `Switch - Classificar Status` | `Switch` | Lê `$json.status` e escolhe a saída: CRITICO / ALERTA / NORMAL / ERRO |
 | ④ | `Email - Alerta CRITICO` | `Send Email` | Dispara o e-mail P1 com assunto `[P1 - CRITICO] ...` |
 | ⑤ | `Email - Aviso ALERTA` | `Send Email` | Dispara o e-mail P2 com assunto `[P2 - ALERTA] ...` |
@@ -171,9 +206,9 @@ Resumo:
 > Print mostrando método `POST`, path `monitoramento-servidor`, `Respond: Using 'Respond to Webhook' Node` e as URLs de Test/Production.
 > `![Node Webhook](images/node-webhook.png)`
 
-> 📸 **Screenshot 3 — Code node com o Python**
-> Print do Code node com `Language: Python (Beta)` e o código visível.
-> `![Code node Python](images/node-python.png)`
+> 📸 **Screenshot 3 — node HTTP Request chamando o Python**
+> Print mostrando `POST http://127.0.0.1:8000/analisar` e o body com a expression.
+> `![Node HTTP Request](images/node-http-request.png)`
 
 > 📸 **Screenshot 4 — Switch com as saídas renomeadas**
 > Print mostrando as quatro saídas: CRITICO, ALERTA, NORMAL e ERRO.
@@ -186,21 +221,23 @@ Resumo:
 Todo o **cérebro** da automação está em Python. O N8N cuida do transporte
 (receber, rotear, enviar); o Python cuida da **decisão**.
 
-O mesmo motor existe em duas formas, mantidas em paridade (há um teste que
-compara as duas saídas):
+| Arquivo | Papel |
+|---|---|
+| [`python/analisar_servidor.py`](python/analisar_servidor.py) | Motor de análise: valida, classifica, prioriza e monta a mensagem. Funciona como biblioteca e como CLI |
+| [`python/api_analise.py`](python/api_analise.py) | Microsserviço HTTP (`http.server` da stdlib) que expõe o motor em `POST /analisar` |
+| [`python/test_analisar_servidor.py`](python/test_analisar_servidor.py) | 14 testes unitários das regras e das bordas |
 
-| Arquivo | Onde roda | Uso |
-|---|---|---|
-| [`python/analisar_servidor.py`](python/analisar_servidor.py) | Terminal / CI | Versão CLI e importável. Aceita JSON por argumento ou stdin |
-| [`python/code_node_n8n.py`](python/code_node_n8n.py) | Dentro do N8N | Versão autocontida colada no Code node (Pyodide não importa arquivos locais) |
+A separação é proposital: **a regra de negócio não sabe que existe HTTP**, e a
+camada HTTP não sabe nada sobre limiares. Dá para reaproveitar o motor num
+script de crontab, numa Lambda ou num job de CI sem mudar uma linha.
 
 ### Regras de classificação
 
 ```text
 Recursos (cpu, memoria, disco), em %:
-    valor < 80    →  NORMAL
+    valor < 80      →  NORMAL
     80 ≤ valor < 90 →  ALERTA
-    valor ≥ 90    →  CRITICO
+    valor ≥ 90      →  CRITICO
 
 Status do serviço:
     online / running / ativo        →  NORMAL
@@ -234,9 +271,13 @@ verdade:
 
 ### Tratamento de erro
 
-Payload inválido não derruba o workflow: o Code node captura a exceção e devolve
-`status: "ERRO"`, que cai na saída de *fallback* do Switch e retorna ao chamador
-com a descrição do problema — sem gerar e-mail falso-positivo.
+Payload inválido **não derruba o workflow**. A API responde `HTTP 200` com
+`status: "ERRO"` e a descrição do problema. Esse item cai na saída de *fallback*
+do Switch e retorna ao chamador — sem gerar e-mail falso-positivo.
+
+Se a própria API estiver fora do ar, o node HTTP Request está configurado com
+`onError: continueRegularOutput`, então o erro também segue pelo caminho `ERRO`
+em vez de quebrar a execução.
 
 ---
 
@@ -246,7 +287,7 @@ com a descrição do problema — sem gerar e-mail falso-positivo.
 
 ```json
 {
-  "servidor": "SRV-PACS-01",
+  "servidor": "SRV-CFTV-02",
   "cpu": 72,
   "memoria": 84,
   "disco": 93,
@@ -258,7 +299,7 @@ com a descrição do problema — sem gerar e-mail falso-positivo.
 
 ```json
 {
-  "servidor": "SRV-PACS-01",
+  "servidor": "SRV-CFTV-02",
   "status": "CRITICO",
   "motivo": "Utilizacao de disco em 93% (limite critico: 90%).",
   "acao_recomendada": "Verificar espaco disponivel e realizar limpeza do servidor (logs antigos, dumps, imagens temporarias). Avaliar expansao do volume.",
@@ -266,19 +307,19 @@ com a descrição do problema — sem gerar e-mail falso-positivo.
   "prioridade": "P1",
   "notificar": true,
   "metricas": { "cpu": 72.0, "memoria": 84.0, "disco": 93.0, "servico": "online" },
-  "analisado_em": "2026-09-18T00:40:10+00:00",
+  "analisado_em": "2026-09-18T01:03:38+00:00",
   "versao_regras": "1.0.0",
-  "mensagem": "ALERTA DE MONITORAMENTO\nServidor: SRV-PACS-01\n..."
+  "mensagem": "ALERTA DE MONITORAMENTO\nServidor: SRV-CFTV-02\n..."
 }
 ```
 
 ### E-mail recebido pela equipe
 
-**Assunto:** `[P1 - CRITICO] SRV-PACS-01 - acao imediata necessaria`
+**Assunto:** `[P1 - CRITICO] SRV-CFTV-02 - acao imediata necessaria`
 
 ```text
 ALERTA DE MONITORAMENTO
-Servidor: SRV-PACS-01
+Servidor: SRV-CFTV-02
 Status: CRITICO
 CPU: 72%
 Memoria: 84%
@@ -292,7 +333,7 @@ Acao recomendada:
 Verificar espaco disponivel e realizar limpeza do servidor (logs antigos,
 dumps, imagens temporarias). Avaliar expansao do volume.
 
-Prioridade: P1 | Analisado em (UTC): 2026-09-18T00:40:10+00:00
+Prioridade: P1 | Analisado em (UTC): 2026-09-18T01:03:38+00:00
 ```
 
 > 📸 **Screenshot 5 — e-mail recebido**
@@ -308,41 +349,41 @@ com [`examples/testar-webhook.sh`](examples/testar-webhook.sh).
 
 ### Cenário 1 — NORMAL
 
-Servidor operando dentro dos limites. **Não gera e-mail.**
+App do morador operando dentro dos limites. **Não gera e-mail.**
 
 ```json
-{ "servidor": "SRV-APP-02", "cpu": 35, "memoria": 48, "disco": 61, "servico": "online" }
+{ "servidor": "SRV-APP-03", "cpu": 35, "memoria": 48, "disco": 61, "servico": "online" }
 ```
 
 **Esperado:** `status: NORMAL` · `prioridade: P4` · `notificar: false` · saída ③ do Switch → NoOp.
 
 ### Cenário 2 — ALERTA
 
-Memória em 84% — acima do limiar de atenção, abaixo do crítico.
+Banco de dados com memória em 84% — acima do limiar de atenção, abaixo do crítico.
 
 ```json
-{ "servidor": "SRV-LIS-03", "cpu": 66, "memoria": 84, "disco": 72, "servico": "online" }
+{ "servidor": "SRV-BD-04", "cpu": 66, "memoria": 84, "disco": 72, "servico": "online" }
 ```
 
 **Esperado:** `status: ALERTA` · `prioridade: P2` · e-mail `[P2 - ALERTA]`.
 
-### Cenário 3 — CRÍTICO (disco)
+### Cenário 3 — CRÍTICO
 
-Disco em 93%, acima do limiar crítico.
+Servidor de CFTV com disco em 93%: a gravação das câmeras está prestes a parar.
 
 ```json
-{ "servidor": "SRV-PACS-01", "cpu": 72, "memoria": 84, "disco": 93, "servico": "online" }
+{ "servidor": "SRV-CFTV-02", "cpu": 72, "memoria": 84, "disco": 93, "servico": "online" }
 ```
 
 **Esperado:** `status: CRITICO` · `prioridade: P1` · e-mail `[P1 - CRITICO]`.
 Note que a memória em 84% (ALERTA) é *ofuscada* pelo disco: o pior nível vence.
 
-### Cenário 4 — CRÍTICO (serviço indisponível) *(bônus)*
+### Cenário 4 — CRÍTICO por serviço indisponível *(bônus)*
 
-Recursos saudáveis, mas o serviço caiu.
+Portaria com recursos saudáveis, mas o serviço caiu — ninguém entra no condomínio.
 
 ```json
-{ "servidor": "SRV-INT-05", "cpu": 12, "memoria": 22, "disco": 40, "servico": "offline" }
+{ "servidor": "SRV-PORTARIA-01", "cpu": 12, "memoria": 22, "disco": 40, "servico": "offline" }
 ```
 
 **Esperado:** `status: CRITICO` por causa do serviço, mesmo com métricas baixas.
@@ -350,7 +391,7 @@ Recursos saudáveis, mas o serviço caiu.
 ### Cenário 5 — Payload inválido *(bônus)*
 
 ```json
-{ "servidor": "SRV-ERRO-09", "cpu": 55, "memoria": 60 }
+{ "servidor": "SRV-APP-03", "cpu": 55, "memoria": 60 }
 ```
 
 **Esperado:** `status: ERRO`, motivo `Campos obrigatorios ausentes: disco, servico`,
@@ -377,34 +418,74 @@ OK
 
 ### Pré-requisitos
 
-- **N8N 1.x** (Docker, npm ou Cloud)
-- **Python 3.10+** (apenas para rodar os testes e a versão CLI — o workflow não precisa)
+- **N8N** (Docker, npm ou Cloud)
+- **Python 3.10+**
 - Uma conta **SMTP** (Gmail com senha de app, Outlook, Mailtrap, etc.)
 
-### Passo 1 — Subir o N8N
+Nenhum `pip install` é necessário: a API usa apenas a biblioteca padrão.
+
+### Passo 1 — Subir o microsserviço Python
+
+```bash
+# Windows
+iniciar-api.bat
+
+# Linux / macOS
+./iniciar-api.sh
+
+# ou, em qualquer sistema
+python3 python/api_analise.py
+```
+
+Saída esperada:
+
+```text
+==============================================================
+  API de analise de saude de servidores
+  Escutando em    http://127.0.0.1:8000
+  Health check    http://127.0.0.1:8000/saude
+  Analise (POST)  http://127.0.0.1:8000/analisar
+  Ctrl+C para encerrar
+==============================================================
+```
+
+Confira com `curl http://127.0.0.1:8000/saude`.
+**Deixe esse terminal aberto** enquanto usar o workflow.
+
+### Passo 2 — Subir o N8N
+
+```bash
+npx n8n
+```
+
+Ou com Docker:
 
 ```bash
 docker volume create n8n_data
-
-docker run -d --name n8n \
-  -p 5678:5678 \
+docker run -d --name n8n -p 5678:5678 \
   -v n8n_data:/home/node/.n8n \
-  -e GENERIC_TIMEZONE="America/Sao_Paulo" \
-  -e TZ="America/Sao_Paulo" \
+  -e GENERIC_TIMEZONE="America/Sao_Paulo" -e TZ="America/Sao_Paulo" \
   docker.n8n.io/n8nio/n8n
 ```
 
+> ⚠️ **Duas armadilhas de rede que já custaram tempo neste projeto:**
+>
+> 1. **Use `127.0.0.1`, não `localhost`.** No Windows o Node.js resolve
+>    `localhost` para o IPv6 `::1`, enquanto a API Python escuta em IPv4 — o
+>    resultado é `ECONNREFUSED ::1:8000`. O workflow já vem com `127.0.0.1`.
+> 2. **N8N em Docker com a API no host:** troque a URL para
+>    `http://host.docker.internal:8000` — dentro do container, `127.0.0.1` é o
+>    próprio container.
+
 Acesse `http://localhost:5678`.
 
-> Alternativa sem Docker: `npx n8n`
+### Passo 3 — Importar o workflow
 
-### Passo 2 — Importar o workflow
-
-1. No N8N: menu **⋯ (canto superior direito) → Import from File**
+1. No N8N: menu **⋯ → Import from File**
 2. Selecione `workflow/monitoramento-servidor.json`
 3. O canvas aparece com os 7 nodes já conectados
 
-### Passo 3 — Configurar a credencial SMTP
+### Passo 4 — Configurar a credencial SMTP
 
 1. **Credentials → Add credential → SMTP**
 2. Preencha (exemplo Gmail):
@@ -420,13 +501,13 @@ Acesse `http://localhost:5678`.
 3. Abra os nodes **`Email - Alerta CRITICO`** e **`Email - Aviso ALERTA`**, selecione
    a credencial criada e ajuste `From Email` / `To Email`.
 
-> ⚠️ Nunca comite credenciais. Exporte o workflow **sem** credenciais antes de subir ao Git.
+> ⚠️ Nunca comite credenciais. O N8N exporta apenas a referência à credencial,
+> nunca a senha — mas confira o JSON antes do `git push`.
 
-### Passo 4 — Testar
+### Passo 5 — Testar
 
 1. Clique em **Execute workflow** (o webhook de teste fica escutando)
-2. Copie a **Test URL** do node Webhook
-3. Dispare os cenários:
+2. Dispare os cenários:
 
 ```bash
 chmod +x examples/testar-webhook.sh
@@ -441,7 +522,7 @@ curl -X POST http://localhost:5678/webhook-test/monitoramento-servidor \
      -d @examples/servidor_critico.json
 ```
 
-### Passo 5 — Ativar em produção
+### Passo 6 — Ativar em produção
 
 Salve o workflow e ligue o toggle **Active**. A URL de produção passa a ser
 `http://localhost:5678/webhook/monitoramento-servidor` (sem o `-test`).
@@ -449,19 +530,18 @@ Salve o workflow e ligue o toggle **Active**. A URL de produção passa a ser
 ### Rodar o motor Python fora do N8N
 
 ```bash
-# via argumento
-python3 python/analisar_servidor.py '{"servidor":"SRV-PACS-01","cpu":72,"memoria":84,"disco":93,"servico":"online"}'
+# argumentos nomeados
+python3 python/analisar_servidor.py --servidor "SRV-CFTV-02" --cpu 72 \
+        --memoria 84 --disco 93 --servico online
 
-# via stdin
+# JSON via stdin
 cat examples/servidor_critico.json | python3 python/analisar_servidor.py
 
 # testes
 python3 -m unittest discover -s python -v
 ```
 
-### Regenerar o workflow após alterar as regras
-
-O JSON do workflow é gerado a partir de `python/code_node_n8n.py`:
+### Regenerar o workflow após alterar URLs ou e-mails
 
 ```bash
 python3 docs/gerar_workflow.py
@@ -477,13 +557,15 @@ rpa-monitoramento-n8n-python/
 ├── README.md                          # Esta documentação
 ├── LICENSE                            # Licença MIT
 ├── .gitignore
+├── iniciar-api.bat                    # Sobe a API no Windows
+├── iniciar-api.sh                     # Sobe a API no Linux/macOS
 │
 ├── workflow/
 │   └── monitoramento-servidor.json    # Workflow pronto para importar no N8N
 │
 ├── python/
-│   ├── analisar_servidor.py           # Motor de análise (CLI + biblioteca)
-│   ├── code_node_n8n.py               # Mesma lógica, para colar no Code node
+│   ├── analisar_servidor.py           # Motor de análise (biblioteca + CLI)
+│   ├── api_analise.py                 # Microsserviço HTTP (stdlib, sem deps)
 │   └── test_analisar_servidor.py      # 14 testes unitários
 │
 ├── examples/
@@ -496,12 +578,13 @@ rpa-monitoramento-n8n-python/
 │
 ├── docs/
 │   ├── PASSO-A-PASSO.md               # Guia node por node (construção manual)
-│   └── gerar_workflow.py              # Gera o JSON do workflow a partir do Python
+│   ├── CHECKLIST-ENTREGA.md           # Checklist antes de entregar
+│   └── gerar_workflow.py              # Gera o JSON do workflow
 │
 └── images/
     ├── workflow-n8n.png               # Screenshot 1 — canvas completo
     ├── node-webhook.png               # Screenshot 2
-    ├── node-python.png                # Screenshot 3
+    ├── node-http-request.png          # Screenshot 3
     ├── node-switch.png                # Screenshot 4
     ├── email-alerta.png               # Screenshot 5
     └── execucoes.png                  # Screenshot 6
@@ -515,14 +598,14 @@ rpa-monitoramento-n8n-python/
 
 - Persistir cada análise em banco (PostgreSQL/MySQL) para histórico e SLA.
 - Adicionar canal Telegram/Slack em paralelo ao e-mail.
-- Abrir chamado automaticamente no GLPI/Jira quando o status for `CRITICO`.
-- Autenticar o webhook (Header Auth) para impedir POST não autorizado.
+- Autenticar o webhook (Header Auth) e a API (token) para impedir chamadas não autorizadas.
+- Empacotar a API em um `Dockerfile` e subir junto do N8N via `docker compose`.
 
 **Médio prazo**
 
 - **Deduplicação de alertas**: não reenviar o mesmo alerta antes de N minutos.
 - **Limiares por servidor**, vindos de uma tabela de configuração — um servidor de
-  banco tolera memória alta; um servidor de arquivos, não.
+  banco tolera memória alta; um de CFTV, não.
 - **Alerta de tendência**: disparar quando o disco cresce X% ao dia, antes de
   chegar a 90%.
 - Dashboard (Grafana/Metabase) sobre o histórico gravado.
@@ -531,7 +614,7 @@ rpa-monitoramento-n8n-python/
 
 - Detecção de anomalia por baseline estatístico em vez de limiar fixo.
 - **Auto-remediação**: para casos seguros e conhecidos (rotacionar log, limpar
-  `/tmp`), executar a ação e só então notificar o que foi feito.
+  gravações expiradas do CFTV), executar a ação e só então notificar o que foi feito.
 - Agente coletor próprio (`psutil`) empacotado para instalação na frota.
 
 ---
@@ -547,11 +630,13 @@ resolve o que ferramenta visual faz mal — regra de negócio com condições
 compostas, priorização e texto dinâmico. Cada camada faz o que faz melhor, e o
 resultado é uma automação que dá para ler, testar e evoluir.
 
-Do ponto de vista operacional, o ganho é direto: a triagem que antes dependia de
-alguém olhar um dashboard passa a acontecer em milissegundos, com critério
-uniforme e ação recomendada junto do alerta. E, por ser um contrato simples de
-webhook, o mesmo motor atende qualquer coletor — de um `cron` de três linhas a
-um Prometheus completo.
+A escolha de expor o Python como **microsserviço HTTP**, em vez de embutir o
+código dentro do N8N, nasceu de um problema real durante a construção (o Code
+node em Python e o Execute Command não estavam disponíveis na versão instalada)
+e acabou virando a melhor decisão do projeto: desacoplou a regra de negócio da
+ferramenta de automação. Hoje o motor de análise pode ser chamado pelo N8N,
+por um crontab ou por qualquer outro sistema — e continua com seus 14 testes
+rodando em menos de um segundo.
 
 ---
 
@@ -561,11 +646,11 @@ Distribuído sob a licença MIT. Veja [`LICENSE`](LICENSE).
 
 ## Autor
 
-**Gabriel Felipe Santana Belarmino**
-Desenvolvedor Backend · Especialista em Suporte de Sistemas
+**Gabriel Felipe Santana**
 
 [![GitHub](https://img.shields.io/badge/GitHub-GabrielFSantana-181717?style=flat-square&logo=github)](https://github.com/GabrielFSantana)
 
 ---
 
 <sub>Desafio de projeto — Bootcamp Santander Automação com N8N · Digital Innovation One (DIO)</sub>
+<sub><br>A CondoTech Sistemas e os condomínios citados são fictícios, criados apenas para dar contexto ao exercício.</sub>

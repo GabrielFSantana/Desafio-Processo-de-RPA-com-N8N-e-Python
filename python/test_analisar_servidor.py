@@ -20,7 +20,7 @@ from analisar_servidor import analisar, normalizar, PayloadInvalido  # noqa: E40
 class TestClassificacao(unittest.TestCase):
 
     def test_cenario_1_normal(self):
-        r = analisar({"servidor": "SRV-APP-02", "cpu": 35, "memoria": 48,
+        r = analisar({"servidor": "SRV-APP-03", "cpu": 35, "memoria": 48,
                       "disco": 61, "servico": "online"})
         self.assertEqual(r["status"], "NORMAL")
         self.assertEqual(r["prioridade"], "P4")
@@ -28,7 +28,7 @@ class TestClassificacao(unittest.TestCase):
         self.assertEqual(r["recursos_afetados"], [])
 
     def test_cenario_2_alerta_memoria(self):
-        r = analisar({"servidor": "SRV-LIS-03", "cpu": 66, "memoria": 84,
+        r = analisar({"servidor": "SRV-BD-04", "cpu": 66, "memoria": 84,
                       "disco": 72, "servico": "online"})
         self.assertEqual(r["status"], "ALERTA")
         self.assertEqual(r["prioridade"], "P2")
@@ -36,7 +36,7 @@ class TestClassificacao(unittest.TestCase):
         self.assertTrue(r["notificar"])
 
     def test_cenario_3_critico_disco(self):
-        r = analisar({"servidor": "SRV-PACS-01", "cpu": 72, "memoria": 84,
+        r = analisar({"servidor": "SRV-CFTV-02", "cpu": 72, "memoria": 84,
                       "disco": 93, "servico": "online"})
         self.assertEqual(r["status"], "CRITICO")
         self.assertEqual(r["prioridade"], "P1")
@@ -44,7 +44,7 @@ class TestClassificacao(unittest.TestCase):
         self.assertIn("disco", r["motivo"])
 
     def test_servico_offline_gera_critico(self):
-        r = analisar({"servidor": "SRV-INT-05", "cpu": 10, "memoria": 20,
+        r = analisar({"servidor": "SRV-PORTARIA-01", "cpu": 10, "memoria": 20,
                       "disco": 30, "servico": "offline"})
         self.assertEqual(r["status"], "CRITICO")
         self.assertEqual(r["recursos_afetados"], ["servico"])
@@ -106,18 +106,18 @@ class TestEntrada(unittest.TestCase):
 class TestSaida(unittest.TestCase):
 
     def test_saida_e_serializavel_e_tem_campos_do_desafio(self):
-        r = analisar({"servidor": "SRV-PACS-01", "cpu": 72, "memoria": 84,
+        r = analisar({"servidor": "SRV-CFTV-02", "cpu": 72, "memoria": 84,
                       "disco": 93, "servico": "online"})
         json.dumps(r)  # nao pode levantar excecao
         for campo in ("servidor", "status", "motivo", "acao_recomendada"):
             self.assertIn(campo, r)
 
     def test_mensagem_tem_o_formato_do_desafio(self):
-        r = analisar({"servidor": "SRV-PACS-01", "cpu": 72, "memoria": 84,
+        r = analisar({"servidor": "SRV-CFTV-02", "cpu": 72, "memoria": 84,
                       "disco": 93, "servico": "online"})
         msg = r["mensagem"]
         self.assertIn("ALERTA DE MONITORAMENTO", msg)
-        self.assertIn("Servidor: SRV-PACS-01", msg)
+        self.assertIn("Servidor: SRV-CFTV-02", msg)
         self.assertIn("Status: CRITICO", msg)
         self.assertIn("CPU: 72%", msg)
         self.assertIn("Memoria: 84%", msg)

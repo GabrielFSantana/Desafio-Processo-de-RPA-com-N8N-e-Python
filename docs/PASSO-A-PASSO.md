@@ -2,7 +2,7 @@
 
 Este documento ensina a montar o workflow **do zero**, na mão, no seu próprio N8N.
 Se você só quer rodar, importe `workflow/monitoramento-servidor.json` e pule para a
-[seção 9](#9-configurando-a-credencial-smtp).
+[seção 8](#8-configurando-a-credencial-smtp).
 
 Construir na mão é o que realmente fixa o conteúdo do desafio — e rende os prints
 para o README.
@@ -19,11 +19,10 @@ para o README.
 - [5. Node — Email - Aviso ALERTA](#5-node--email---aviso-alerta)
 - [6. Node — Sem Acao - Servidor Normal](#6-node--sem-acao---servidor-normal)
 - [7. Node — Responder Webhook](#7-node--responder-webhook)
-- [8. Sticky Notes (opcional, mas recomendado)](#8-sticky-notes-opcional-mas-recomendado)
-- [9. Configurando a credencial SMTP](#9-configurando-a-credencial-smtp)
-- [10. Testando os cenários](#10-testando-os-cenários)
-- [11. Ativando em produção](#11-ativando-em-produção)
-- [Anexo A — Alternativa com Execute Command](#anexo-a--alternativa-com-execute-command)
+- [8. Configurando a credencial SMTP](#8-configurando-a-credencial-smtp)
+- [9. Testando os cenários](#9-testando-os-cenários)
+- [10. Ativando em produção](#10-ativando-em-produção)
+- [Anexo A — Por que microsserviço e não Code node em Python](#anexo-a--por-que-microsserviço-e-não-code-node-em-python)
 - [Anexo B — Referência rápida de expressions](#anexo-b--referência-rápida-de-expressions)
 - [Anexo C — Solução de problemas](#anexo-c--solução-de-problemas)
 
@@ -31,14 +30,28 @@ para o README.
 
 ## 0. Antes de começar
 
-Suba o N8N:
+**Primeiro, suba o microsserviço Python.** Ele precisa estar rodando antes do
+workflow, porque é ele que faz a análise:
 
 ```bash
-docker volume create n8n_data
-docker run -d --name n8n -p 5678:5678 \
-  -v n8n_data:/home/node/.n8n \
-  -e GENERIC_TIMEZONE="America/Sao_Paulo" -e TZ="America/Sao_Paulo" \
-  docker.n8n.io/n8nio/n8n
+# Windows
+iniciar-api.bat
+
+# Linux / macOS
+./iniciar-api.sh
+```
+
+Confira:
+
+```bash
+curl http://127.0.0.1:8000/saude
+# {"status": "ok", "servico": "API de analise de saude de servidores", ...}
+```
+
+**Depois, suba o N8N:**
+
+```bash
+npx n8n
 ```
 
 Abra `http://localhost:5678` → **Create Workflow** → renomeie (canto superior
@@ -60,14 +73,14 @@ esquerdo) para **`RPA - Monitoramento de Saude de Servidores`**.
 É um node **trigger**: ele inicia o workflow.
 
 ### 1.3 Para que ele serve
-Expõe uma URL HTTP pública do N8N. Qualquer agente coletor (crontab, Zabbix,
-health check, outro workflow) faz um `POST` nessa URL enviando as métricas do
-servidor. É o **contrato de entrada** da automação — quem coleta não precisa
-saber nada sobre as regras de análise.
+Expõe uma URL HTTP do N8N. Qualquer agente coletor (crontab, Zabbix, health
+check, outro workflow) faz um `POST` nessa URL enviando as métricas do servidor.
+É o **contrato de entrada** da automação — quem coleta não precisa saber nada
+sobre as regras de análise.
 
 ### 1.4 Como configurá-lo
 1. `+` → busque **Webhook** → selecione.
-2. Ele já entra no canvas como primeiro node.
+2. Ele entra no canvas como primeiro node.
 3. Preencha os campos da tabela abaixo.
 4. Copie a **Test URL** que aparece no topo do painel — você vai usá-la nos testes.
 
@@ -89,7 +102,7 @@ Nenhuma. Este node só recebe.
 O corpo da requisição HTTP:
 
 ```json
-{ "servidor": "SRV-PACS-01", "cpu": 72, "memoria": 84, "disco": 93, "servico": "online" }
+{ "servidor": "SRV-CFTV-02", "cpu": 72, "memoria": 84, "disco": 93, "servico": "online" }
 ```
 
 ### 1.8 Dados que devem sair
@@ -102,7 +115,7 @@ raiz. Ele o embrulha:
   "params": {},
   "query": {},
   "body": {
-    "servidor": "SRV-PACS-01",
+    "servidor": "SRV-CFTV-02",
     "cpu": 72,
     "memoria": 84,
     "disco": 93,
@@ -117,7 +130,7 @@ Ou seja: o payload útil está em **`$json.body`**, não em `$json`.
 
 > **Test URL vs Production URL**
 > - `…/webhook-test/monitoramento-servidor` → só responde **enquanto** você
->   clicou em *Execute workflow*. Serve para ver os dados no canvas.
+>   clicou em *Execute workflow*, e para **uma** chamada.
 > - `…/webhook/monitoramento-servidor` → exige o workflow **salvo e ativo**.
 
 ---
@@ -128,81 +141,65 @@ Ou seja: o payload útil está em **`$json.body`**, não em `$json`.
 `Python - Analisar Servidor`
 
 ### 2.2 Tipo do node
-**Code** — `n8n-nodes-base.code` (typeVersion 2), com **Language: Python (Beta)**.
+**HTTP Request** — `n8n-nodes-base.httpRequest` (typeVersion 4.2).
 
-> O N8N roda Python via **Pyodide** (CPython compilado para WebAssembly). Roda
-> dentro do próprio N8N, sem instalar nada, e funciona inclusive no N8N Cloud.
-> Limitação: só a biblioteca padrão e alguns pacotes suportados pelo Pyodide —
-> mais que suficiente aqui, porque a análise é lógica pura.
+> Por que este node e não o Code node em Python? Veja o
+> [Anexo A](#anexo-a--por-que-microsserviço-e-não-code-node-em-python) —
+> resumo: o Python do Code node, a partir do N8N 2.x, depende de um virtualenv
+> gerenciado que não vem pronto em várias instalações, e o Execute Command foi
+> retirado do conjunto padrão. O HTTP Request funciona em qualquer versão.
 
 ### 2.3 Para que ele serve
-É o **cérebro** do RPA. Recebe o payload bruto, valida, aplica as regras de
-capacity planning, classifica em `NORMAL` / `ALERTA` / `CRITICO`, monta o motivo,
-a ação recomendada e a mensagem já formatada para a notificação.
+É a ponte para o **cérebro** do RPA. Envia as métricas para o microsserviço
+Python (`python/api_analise.py`), que valida, aplica as regras de capacity
+planning, classifica em `NORMAL` / `ALERTA` / `CRITICO`, monta o motivo, a ação
+recomendada e a mensagem já formatada para a notificação.
 
 ### 2.4 Como configurá-lo
-1. `+` na saída do Webhook → busque **Code**.
-2. Em **Language**, escolha **`Python (Beta)`**.
-3. Em **Mode**, deixe **`Run Once for All Items`**.
-4. Apague o código de exemplo e **cole o conteúdo de
-   [`python/code_node_n8n.py`](../python/code_node_n8n.py)** — o arquivo inteiro,
-   incluindo o bloco final que monta o `return`.
+1. `+` na saída do Webhook → busque **HTTP Request**.
+2. Preencha os campos abaixo.
+3. Em **Settings → On Error**, escolha **`Continue (using regular output)`** —
+   assim, se a API estiver fora do ar, o erro segue pelo caminho `ERRO` em vez
+   de derrubar a execução.
 
 ### 2.5 Campos que precisam ser preenchidos
 
 | Campo | Valor |
 |---|---|
-| **Language** | `Python (Beta)` |
-| **Mode** | `Run Once for All Items` |
-| **Python Code** | conteúdo de `python/code_node_n8n.py` |
+| **Method** | `POST` |
+| **URL** | `http://127.0.0.1:8000/analisar` |
+| **Send Body** | ativado |
+| **Body Content Type** | `JSON` |
+| **Specify Body** | `Using JSON` |
+| **JSON** | *(expression)* `{{ JSON.stringify($json.body) }}` |
+| **Settings → On Error** | `Continue (using regular output)` |
+
+> ⚠️ **Use `127.0.0.1`, não `localhost`.** No Windows o Node.js resolve
+> `localhost` para o IPv6 `::1`, mas a API Python escuta em IPv4 — dá
+> `ECONNREFUSED ::1:8000`. Com `127.0.0.1` o problema não existe.
+>
+> ⚠️ **N8N em Docker + API no host:** troque por `http://host.docker.internal:8000`.
+> Dentro do container, `127.0.0.1` é o próprio container.
 
 ### 2.6 Expressions do N8N
-Dentro do Code node não se usa a sintaxe `{{ }}`. O acesso aos dados é pela API
-Python do N8N:
 
-| Expressão | O que faz |
-|---|---|
-| `_input.all()` | Lista de todos os itens que chegaram do node anterior |
-| `_input.first()` | Apenas o primeiro item |
-| `item.json` | O JSON do item — é um **JsProxy**, não um dict Python |
-| `item.json.to_py()` | 🔑 **Converte o JsProxy em dict Python de verdade** |
-| `return [{"json": {...}}]` | Formato obrigatório de saída do Code node |
-
-O trecho que faz a ponte (final do arquivo):
-
-```python
-saida = []
-for item in _input.all():
-    dados = item.json.to_py()          # JsProxy -> dict Python
-    corpo = dados.get("body", dados)   # o Webhook entrega o payload em "body"
-    try:
-        saida.append({"json": analisar(corpo)})
-    except Exception as erro:
-        saida.append({"json": {
-            "status": "ERRO",
-            "servidor": corpo.get("servidor", "desconhecido"),
-            "motivo": str(erro),
-            "acao_recomendada": "Corrigir o payload enviado ao webhook e reenviar.",
-            "notificar": False,
-        }})
-return saida
+```
+{{ JSON.stringify($json.body) }}
 ```
 
-> ⚠️ **Esquecer o `.to_py()` é o erro nº 1** ao usar Python no N8N. Sem ele,
-> `dados["cpu"]` estoura com `TypeError: 'JsProxy' object is not subscriptable`.
-
-> 💡 O `try/except` garante que payload inválido não derruba o workflow: vira
-> `status: "ERRO"` e é tratado na saída de fallback do Switch.
+Repare que é `$json.body`, não `$json`: estamos repassando **só o payload**
+enviado pelo coletor, sem os headers e metadados que o Webhook adiciona.
+(A API também aceita o envelope completo, mas mandar só o essencial é mais limpo.)
 
 ### 2.7 Dados que entram
 A saída do Webhook (com `body` dentro).
 
 ### 2.8 Dados que devem sair
-Um único item com o diagnóstico completo:
+Um único item com o diagnóstico completo — a resposta da API:
 
 ```json
 {
-  "servidor": "SRV-PACS-01",
+  "servidor": "SRV-CFTV-02",
   "status": "CRITICO",
   "motivo": "Utilizacao de disco em 93% (limite critico: 90%).",
   "acao_recomendada": "Verificar espaco disponivel e realizar limpeza do servidor ...",
@@ -210,9 +207,9 @@ Um único item com o diagnóstico completo:
   "prioridade": "P1",
   "notificar": true,
   "metricas": { "cpu": 72.0, "memoria": 84.0, "disco": 93.0, "servico": "online" },
-  "analisado_em": "2026-09-18T00:40:10+00:00",
+  "analisado_em": "2026-09-18T01:03:38+00:00",
   "versao_regras": "1.0.0",
-  "mensagem": "ALERTA DE MONITORAMENTO\nServidor: SRV-PACS-01\n..."
+  "mensagem": "ALERTA DE MONITORAMENTO\nServidor: SRV-CFTV-02\n..."
 }
 ```
 
@@ -238,7 +235,7 @@ Lê o campo `status` produzido pelo Python e manda o item pelo caminho certo:
 e-mail P1, e-mail P2, sem ação, ou tratamento de erro.
 
 ### 3.4 Como configurá-lo
-1. `+` na saída do Code node → busque **Switch**.
+1. `+` na saída do HTTP Request → busque **Switch**.
 2. **Mode**: `Rules` (padrão).
 3. Crie **3 regras** com **Add Routing Rule**.
 4. Em cada regra, ative **Rename Output** e dê o nome da saída.
@@ -265,12 +262,12 @@ Resultado: 4 saídas, nesta ordem → `CRITICO` (0), `ALERTA` (1), `NORMAL` (2),
 Para colocar uma expression no campo **Left Value**, passe o mouse sobre ele e
 clique na abinha **Expression** (ao lado de *Fixed*).
 
-> 💡 **Alternativa ainda mais simples** — como o Python já devolve o booleano
+> 💡 **Alternativa mais simples** — como o Python já devolve o booleano
 > `notificar`, dá para usar um `IF` com `{{ $json.notificar }}` *is true*. Mas aí
 > você perde a distinção entre P1 e P2 no assunto do e-mail.
 
 ### 3.7 Dados que entram
-O item do Code node (com o campo `status`).
+O item do HTTP Request (com o campo `status`).
 
 ### 3.8 Dados que devem sair
 **O mesmo item, sem alteração** — o Switch só decide *por onde* ele sai. Isso é
@@ -294,7 +291,7 @@ servidor está em estado crítico.
 ### 4.4 Como configurá-lo
 1. `+` na **primeira saída** do Switch (`CRITICO`) → busque **Send Email**.
 2. Em **Credential to connect with**, crie/selecione a credencial SMTP
-   (veja a [seção 9](#9-configurando-a-credencial-smtp)).
+   (veja a [seção 8](#8-configurando-a-credencial-smtp)).
 3. Em **Resource / Operation**, deixe **Send** (padrão).
 4. Preencha os campos abaixo.
 
@@ -302,8 +299,8 @@ servidor está em estado crítico.
 
 | Campo | Valor |
 |---|---|
-| **From Email** | `monitoramento@suaempresa.com.br` |
-| **To Email** | `infraestrutura@suaempresa.com.br` |
+| **From Email** | o e-mail da sua conta SMTP |
+| **To Email** | o e-mail da equipe de infraestrutura |
 | **Subject** | *(expression)* `[P1 - CRITICO] {{ $json.servidor }} - acao imediata necessaria` |
 | **Email Format** | `Text` |
 | **Text** | *(expression)* `{{ $json.mensagem }}` |
@@ -318,7 +315,7 @@ Subject: [P1 - CRITICO] {{ $json.servidor }} - acao imediata necessaria
 Text:    {{ $json.mensagem }}
 ```
 
-Se quiser montar o corpo aqui em vez de usar `mensagem` (útil para entender as
+Se quiser montar o corpo aqui em vez de usar `mensagem` (útil para treinar as
 expressions), o equivalente seria:
 
 ```
@@ -336,10 +333,6 @@ Acao recomendada:
 {{ $json.acao_recomendada }}
 ```
 
-> ⚠️ Cuidado ao referenciar dados de nodes anteriores: se precisar do payload
-> original, use `{{ $('Webhook - Receber Metricas').item.json.body.servidor }}`.
-> Aqui não é necessário, porque o Python já ecoou tudo que interessa.
-
 ### 4.7 Dados que entram
 Item com `status: "CRITICO"`.
 
@@ -347,12 +340,12 @@ Item com `status: "CRITICO"`.
 A resposta do servidor SMTP, por exemplo:
 
 ```json
-{ "accepted": ["infraestrutura@suaempresa.com.br"], "rejected": [], "messageId": "<...>" }
+{ "accepted": ["infra@exemplo.com"], "rejected": [], "messageId": "<...>" }
 ```
 
 > ⚠️ **Atenção:** a partir daqui `$json` é a resposta do SMTP, **não** o
-> diagnóstico. Por isso o node de resposta precisa buscar os dados no node do
-> Python — veja a [seção 7](#7-node--responder-webhook).
+> diagnóstico. Por isso o node de resposta busca os dados no node do HTTP
+> Request — veja a [seção 7](#7-node--responder-webhook).
 
 ---
 
@@ -430,27 +423,19 @@ outra ação.
 | Campo | Valor |
 |---|---|
 | **Respond With** | `JSON` |
-| **Response Body** | *(expression)* `{{ JSON.stringify($json) }}` |
+| **Response Body** | *(expression)* `{{ JSON.stringify($('Python - Analisar Servidor').item.json) }}` |
 
 ### 7.6 Expressions do N8N
-
-```
-{{ JSON.stringify($json) }}
-```
-
-⚠️ **Muito importante:** nos caminhos `CRITICO` e `ALERTA`, `$json` é a resposta
-do SMTP. Para devolver sempre o diagnóstico, troque a expression por:
 
 ```
 {{ JSON.stringify($('Python - Analisar Servidor').item.json) }}
 ```
 
+⚠️ **Por que não simplesmente `$json`?** Porque nos caminhos `CRITICO` e
+`ALERTA` o item que chega aqui é a resposta do servidor SMTP, não o diagnóstico.
 `$('Nome do Node').item.json` busca o item correspondente em **qualquer** node
-anterior do fluxo — é a expression mais útil do N8N.
-
-> No JSON pronto deste repositório a expression está como `{{ JSON.stringify($json) }}`
-> para manter o exemplo simples. Se quiser a resposta sempre uniforme, aplique a
-> troca acima — é um bom ponto para comentar no README como decisão consciente.
+anterior do fluxo — é a expression mais útil do N8N, e garante que a resposta
+HTTP seja sempre o diagnóstico, venha o item pelo caminho que vier.
 
 ### 7.7 Dados que entram
 Resposta do SMTP (caminhos 1 e 2) ou o próprio diagnóstico (caminhos 3 e 4).
@@ -460,7 +445,7 @@ A resposta HTTP 200 para o coletor:
 
 ```json
 {
-  "servidor": "SRV-PACS-01",
+  "servidor": "SRV-CFTV-02",
   "status": "CRITICO",
   "motivo": "Utilizacao de disco em 93% (limite critico: 90%).",
   "acao_recomendada": "Verificar espaco disponivel e realizar limpeza do servidor ...",
@@ -470,16 +455,7 @@ A resposta HTTP 200 para o coletor:
 
 ---
 
-## 8. Sticky Notes (opcional, mas recomendado)
-
-Adicione 3 notas (`+` → **Sticky Note**) sobre os blocos do canvas: entrada,
-análise em Python e notificação. Custa 2 minutos, deixa o print do README
-profissional e mostra cuidado com documentação — o tipo de detalhe que pesa num
-projeto de portfólio.
-
----
-
-## 9. Configurando a credencial SMTP
+## 8. Configurando a credencial SMTP
 
 1. Menu lateral → **Credentials** → **Add credential** → busque **SMTP**.
 2. Preencha:
@@ -507,11 +483,18 @@ projeto de portfólio.
 
 ---
 
-## 10. Testando os cenários
+## 9. Testando os cenários
+
+Confirme que a API Python está de pé:
+
+```bash
+curl http://127.0.0.1:8000/saude
+```
+
+Depois:
 
 1. Clique em **Execute workflow** (o webhook de teste passa a escutar).
-2. Copie a **Test URL** do node Webhook.
-3. Dispare os cenários:
+2. Dispare os cenários:
 
 ```bash
 chmod +x examples/testar-webhook.sh
@@ -534,6 +517,9 @@ curl -X POST http://localhost:5678/webhook-test/monitoramento-servidor \
   -H "Content-Type: application/json" -d @examples/servidor_critico.json
 ```
 
+> ⚠️ Em modo de teste, o webhook responde a **uma** chamada por clique em
+> *Execute workflow*. Clique de novo antes de cada cenário.
+
 **O que verificar em cada execução:**
 
 | Cenário | Caminho aceso no canvas | E-mail | Resposta HTTP |
@@ -544,17 +530,26 @@ curl -X POST http://localhost:5678/webhook-test/monitoramento-servidor \
 | Serviço offline | Switch → `CRITICO` → e-mail P1 | sim | `status: "CRITICO"` |
 | Payload inválido | Switch → `ERRO` → resposta | não | `status: "ERRO"` |
 
+Na janela da API Python você vê o log de cada chamada:
+
+```text
+[22:03:38] SRV-CFTV-02 -> CRITICO
+[22:03:38] "POST /analisar HTTP/1.1" 200 -
+```
+
 > 📸 Aproveite para tirar os prints do README: canvas com o caminho verde de cada
 > cenário e a aba **Executions**.
 
 ---
 
-## 11. Ativando em produção
+## 10. Ativando em produção
 
 1. **Save** no workflow.
 2. Ligue o toggle **Active** (canto superior direito).
 3. A URL passa a ser `http://localhost:5678/webhook/monitoramento-servidor`
    (sem o `-test`).
+4. Garanta que a API Python suba junto com a máquina (serviço do Windows,
+   `systemd` no Linux ou um container).
 
 Exemplo de coletor real — um `cron` de três linhas no servidor monitorado:
 
@@ -574,54 +569,27 @@ curl -s -X POST http://n8n.interno:5678/webhook/monitoramento-servidor \
 
 ---
 
-## Anexo A — Alternativa com Execute Command
+## Anexo A — Por que microsserviço e não Code node em Python
 
-Se você usa **N8N self-hosted** e prefere rodar o script `.py` como arquivo
-(em vez do Code node), substitua o node ② por dois nodes:
+As três formas de rodar Python a partir do N8N foram testadas numa instalação
+real (N8N 2.31.4, instalado via npm no Windows):
 
-**A.1 — `Execute Command`** (`n8n-nodes-base.executeCommand`)
+| Abordagem | Resultado | Motivo |
+|---|---|---|
+| **Code node — `Language: Python`** | ❌ `Python runner unavailable: Virtual environment is missing from this system` | A partir do N8N 2.x o Python do Code node roda em um *task runner* externo que exige o pacote `@n8n/task-runner-python` e um virtualenv gerenciado. Em instalações npm (principalmente no Windows) ele não é criado — é um bug conhecido do projeto |
+| **Execute Command** | ❌ `Unrecognized node type: n8n-nodes-base.executeCommand` | O node foi retirado do conjunto padrão no N8N 2.0 por motivos de segurança. Só volta definindo `N8N_NODES_INCLUDE=["n8n-nodes-base.executeCommand"]`, com relatos de que nem sempre funciona em instalação npm |
+| **Microsserviço HTTP + HTTP Request** | ✅ | O `HTTP Request` é o node mais universal do N8N. Existe em todas as versões, em todos os modos de instalação, sem flag nenhuma |
 
-| Campo | Valor |
-|---|---|
-| **Command** | *(expression)* `python3 /data/scripts/analisar_servidor.py '{{ JSON.stringify($json.body) }}'` |
+Vantagens que a solução escolhida trouxe de brinde:
 
-Saída do node: `{ "exitCode": 0, "stdout": "{...json...}", "stderr": "" }`.
+- **Python de verdade**, com o interpretador do sistema e acesso a qualquer
+  biblioteca (`psutil`, `pandas`, `requests`), em vez de um sandbox limitado.
+- **Testável isoladamente** — `curl` contra a API, sem abrir o N8N.
+- **Reaproveitável** — o mesmo serviço atende outros workflows e outros sistemas.
+- **Deploy independente** — dá para containerizar a API e escalar sem tocar no N8N.
 
-**A.2 — `Code` (JavaScript)** para converter o `stdout` (texto) em objeto:
-
-```javascript
-return $input.all().map(item => ({
-  json: JSON.parse(item.json.stdout)
-}));
-```
-
-**Pré-requisitos desta abordagem:**
-
-1. Python instalado no container do N8N — a imagem oficial **não traz**.
-   Você precisa de uma imagem customizada:
-
-   ```dockerfile
-   FROM docker.n8n.io/n8nio/n8n
-   USER root
-   RUN apk add --no-cache python3
-   USER node
-   ```
-
-2. O script montado como volume:
-
-   ```bash
-   docker run -d --name n8n -p 5678:5678 \
-     -v n8n_data:/home/node/.n8n \
-     -v "$(pwd)/python:/data/scripts:ro" \
-     -e NODE_FUNCTION_ALLOW_EXTERNAL=* \
-     n8n-com-python
-   ```
-
-3. **Não funciona no N8N Cloud.**
-
-> ⚠️ Risco de segurança: montar valores do payload direto na linha de comando
-> abre espaço para *command injection*. O script deste repositório valida a
-> entrada, mas em produção prefira passar o JSON via **stdin** ou usar o Code node.
+O custo é ter um processo a mais rodando. Para uma automação de infraestrutura,
+é um preço baixo — e é assim que integrações de verdade costumam ser feitas.
 
 ---
 
@@ -639,30 +607,23 @@ return $input.all().map(item => ({
 | `{{ $execution.id }}` | ID da execução — ótimo para correlacionar logs |
 | `{{ $workflow.name }}` | Nome do workflow |
 
-E, dentro do **Code node (Python)**:
-
-| Expressão | O que faz |
-|---|---|
-| `_input.all()` | Todos os itens de entrada |
-| `_input.first().json.to_py()` | Primeiro item já convertido para dict |
-| `_('Nome do Node').all()` | Itens de outro node |
-| `return [{"json": {...}}]` | Formato de saída obrigatório |
-
 ---
 
 ## Anexo C — Solução de problemas
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
-| `TypeError: 'JsProxy' object is not subscriptable` | Faltou `.to_py()` | Use `item.json.to_py()` |
-| `KeyError: 'servidor'` | Leu `$json` em vez de `$json.body` | Use `dados.get("body", dados)` |
-| Webhook responde `404` | Workflow não está ativo, ou usou a URL errada | Test URL exige *Execute workflow*; Production URL exige *Active* |
-| Webhook fica “pendurado” sem responder | `Respond` = `Using Respond to Webhook Node`, mas algum caminho não chega nesse node | Conecte **todas** as saídas do Switch ao `Responder Webhook` |
+| `ECONNREFUSED ::1:8000` no HTTP Request | O Node resolveu `localhost` para IPv6; a API escuta em IPv4 | Troque a URL do node para `http://127.0.0.1:8000/analisar` |
+| `ECONNREFUSED 127.0.0.1:8000` no HTTP Request | A API Python não está rodando | Rode `iniciar-api.bat` / `./iniciar-api.sh` e confira `curl http://127.0.0.1:8000/saude` |
+| `ECONNREFUSED` com o N8N em Docker | Dentro do container, `localhost` é o container | Troque a URL para `http://host.docker.internal:8000` |
+| Webhook responde `404` | Workflow não está ativo, ou usou a URL errada | Test URL exige *Execute workflow* a cada chamada; Production URL exige *Active* |
+| Webhook fica “pendurado” sem responder | Algum caminho do Switch não chega ao `Responder Webhook` | Conecte **todas** as saídas do Switch (inclusive `ERRO`) a esse node |
+| Resposta HTTP traz dados do SMTP | `Response Body` usando `$json` | Use `{{ JSON.stringify($('Python - Analisar Servidor').item.json) }}` |
 | `Invalid login: 535` no e-mail | Senha da conta em vez de senha de app | Gere uma senha de app (Gmail exige 2FA) |
 | E-mail sai vazio | `Text` em modo *Fixed* em vez de *Expression* | Clique na aba **Expression** do campo |
 | Switch manda tudo para a mesma saída | `Left Value` em modo *Fixed* (texto literal) | Troque para **Expression**: `{{ $json.status }}` |
-| `ModuleNotFoundError` no Code node | Pacote não suportado pelo Pyodide | Use só a stdlib, ou migre para o Anexo A |
-| Python não classifica como esperado | Valor veio como string com `%` | O script já normaliza — confira nos dados de entrada do node |
+| `status: ERRO` em toda chamada | Payload incompleto ou campo com nome errado | A resposta traz o motivo; confira os 5 campos obrigatórios |
+| API não sobe: `Address already in use` | Porta 8000 ocupada | `python3 python/api_analise.py --porta 8080` e ajuste a URL no node |
 
 ---
 

@@ -11,13 +11,21 @@ NORMAL, ALERTA ou CRITICO, com motivo e acao recomendada.
 
 Modos de uso
 ------------
-1) Argumento na linha de comando (usado pelo node "Execute Command" do N8N):
+1) Argumentos nomeados (RECOMENDADO para o node "Execute Command" do N8N):
+       python analisar_servidor.py --servidor "SRV-PACS-01" --cpu 72 \
+              --memoria 84 --disco 93 --servico "online"
+
+   Este e o modo usado pelo workflow monitoramento-servidor-execute-command.json.
+   Vantagem: nao passa JSON pela linha de comando, o que evita problemas de
+   escape de aspas no cmd.exe (Windows) e no bash (Linux/macOS).
+
+2) JSON como argumento posicional:
        python3 analisar_servidor.py '{"servidor":"SRV-PACS-01","cpu":72,...}'
 
-2) Entrada padrao (stdin) - util para pipes e testes locais:
+3) Entrada padrao (stdin) - util para pipes e testes locais:
        cat examples/servidor_critico.json | python3 analisar_servidor.py
 
-3) Como biblioteca (usado pelos testes e pelo Code node do N8N):
+4) Como biblioteca (usado pelos testes e pelo Code node do N8N):
        from analisar_servidor import analisar
        resultado = analisar({"servidor": "SRV-PACS-01", "cpu": 72, ...})
 
@@ -29,6 +37,7 @@ Codigos de saida
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from datetime import datetime, timezone
@@ -252,25 +261,49 @@ def montar_mensagem(r: dict) -> str:
 # ---------------------------------------------------------------------------
 # 5. CLI
 # ---------------------------------------------------------------------------
-def _ler_entrada(argv) -> str:
-    if len(argv) > 1 and argv[1].strip():
-        return argv[1]
-    return sys.stdin.read()
+def _montar_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="analisar_servidor.py",
+        description="Classifica a saude de um servidor em NORMAL, ALERTA ou CRITICO.",
+    )
+    p.add_argument("json_posicional", nargs="?", default=None,
+                   help="Payload JSON completo (alternativa aos argumentos nomeados)")
+    p.add_argument("--servidor", help="Nome/hostname do servidor")
+    p.add_argument("--cpu", help="Uso de CPU em %% (0-100)")
+    p.add_argument("--memoria", help="Uso de memoria RAM em %% (0-100)")
+    p.add_argument("--disco", help="Uso de disco em %% (0-100)")
+    p.add_argument("--servico", help="Status do servico (online, degradado, offline...)")
+    p.add_argument("--compacto", action="store_true",
+                   help="Imprime o JSON em uma unica linha (mais facil de parsear)")
+    return p
+
+
+def _obter_payload(args) -> dict:
+    """Decide a origem dos dados: argumentos nomeados > JSON posicional > stdin."""
+    nomeados = {
+        "servidor": args.servidor, "cpu": args.cpu, "memoria": args.memoria,
+        "disco": args.disco, "servico": args.servico,
+    }
+    if any(v is not None for v in nomeados.values()):
+        return {k: v for k, v in nomeados.items() if v is not None}
+
+    bruto = args.json_posicional if args.json_posicional else sys.stdin.read()
+    payload = json.loads(bruto)  # JSONDecodeError tratado por quem chama
+
+    # Aceita tanto {"servidor": ...} quanto o formato do N8N {"body": {"servidor": ...}}
+    if isinstance(payload, dict) and isinstance(payload.get("body"), dict):
+        payload = payload["body"]
+    return payload
 
 
 def main(argv=None) -> int:
-    argv = sys.argv if argv is None else argv
-    bruto = _ler_entrada(argv)
+    args = _montar_parser().parse_args(None if argv is None else argv[1:])
 
     try:
-        payload = json.loads(bruto)
+        payload = _obter_payload(args)
     except (json.JSONDecodeError, TypeError) as exc:
         print(json.dumps({"erro": "JSON invalido", "detalhe": str(exc)}, ensure_ascii=False))
         return 1
-
-    # Aceita tanto {"servidor": ...} quanto o formato do N8N {"body": {"servidor": ...}}
-    if isinstance(payload, dict) and "body" in payload and isinstance(payload["body"], dict):
-        payload = payload["body"]
 
     try:
         resultado = analisar(payload)
@@ -278,7 +311,8 @@ def main(argv=None) -> int:
         print(json.dumps({"erro": "Payload invalido", "detalhe": str(exc)}, ensure_ascii=False))
         return 1
 
-    print(json.dumps(resultado, ensure_ascii=False, indent=2))
+    print(json.dumps(resultado, ensure_ascii=False,
+                     indent=None if args.compacto else 2))
     return 0
 
 
